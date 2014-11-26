@@ -11,17 +11,20 @@ typedef struct mbr {
 	uint16_t fat_length; // number of clusters
 	uint16_t data_start; 
 	uint16_t data_length; // clusters
-	char* disk_name[32];
+	char* disk_name;
 } mbr_t;
 
 
-
+// format the file system:
+// determine FAT area length and Data area length
+// write the Master Boot Record to file, initialize the FAT area, and create the root dir
 void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	mbr_t *MBR = (mbr_t *)malloc(sizeof(mbr_t));
 	MBR->sector_size = sector_size;
 	MBR->cluster_size = cluster_size;
 	MBR->disk_size = disk_size;
 	MBR->fat_start = 1;
+	MBR->disk_name = "A\0";
 
 	// determine the size (in clusters) of the FAT and Data areas
 	int i;
@@ -37,11 +40,26 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	}
 	printf("fat start %d\nfat length %d\ndata start %d\ndata length %d\n", MBR->fat_start, MBR->fat_length, MBR->data_start, MBR->data_length);
 	
+	FILE *fs;
+	fs = fopen("FileSystem.bin", "wb");
+	// write the MBR
+	fwrite(MBR, sizeof(*MBR), 1, fs);
+	fclose(fs);	
+
+	fs = fopen("FileSystem.bin", "rb");
+	mbr_t* y = (mbr_t *)malloc(sizeof(MBR));
+	fread(y, sizeof(*MBR), 1, fs);
+	fclose(fs);
+	printf("fat start %d\nfat length %d\ndata start %d\ndata length %d\n",y->fat_start, y->fat_length, y->data_start,y->data_length);
+
+
+	printf("sizeof mbr struct: %lu\n", sizeof(mbr_t));	
+	printf("sizeof mbr struct: %lu\n", sizeof(*MBR));	
 }
 
 int main(int argc, char *argv[]) {
 	
-	format(64, 2, 40);
+	format(64, 1, 20);
 
 
 	return 0;
