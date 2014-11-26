@@ -39,9 +39,23 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 		}
 	}
 	printf("fat start %d\nfat length %d\ndata start %d\ndata length %d\n", MBR->fat_start, MBR->fat_length, MBR->data_start, MBR->data_length);
-	
+
+	// initialization operations
+	// - initialize the file system by writing zeros to every byte
+	// size of resulting file should be equal to sector_size * cluster_size * disk_size
+	int disk_size_bytes = sector_size * cluster_size * disk_size;
 	FILE *fs;
 	fs = fopen("FileSystem.bin", "wb");
+	uint8_t init_fs[disk_size_bytes]; 
+	for (i=0; i < disk_size_bytes; i++) {
+		init_fs[i] = 0;
+		printf("%d %d\n", i, init_fs[i]);
+	}
+	fwrite(init_fs, sizeof(uint8_t), disk_size_bytes, fs);	
+	fclose(fs);
+
+	//FILE *fs;
+	fs = fopen("FileSystem.bin", "w+b");
 	// write the MBR
 	fwrite(MBR, sizeof(*MBR), 1, fs);
 	fclose(fs);	
@@ -55,6 +69,12 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 
 	printf("sizeof mbr struct: %lu\n", sizeof(mbr_t));	
 	printf("sizeof mbr struct: %lu\n", sizeof(*MBR));	
+
+	fs = fopen("FileSystem.bin", "w+b");
+	fseek(fs, sizeof(uint8_t) * cluster_size, SEEK_SET);
+	uint8_t x[] = {5,4};
+	fwrite(x, sizeof(x), sizeof(x)/sizeof(x[0]), fs);
+	fclose(fs);
 }
 
 int main(int argc, char *argv[]) {
