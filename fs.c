@@ -55,12 +55,12 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	fclose(fs);
 
 	//FILE *fs;
-	fs = fopen("FileSystem.bin", "w+b");
+	fs = fopen("FileSystem.bin", "r+b");
 	// write the MBR
 	fwrite(MBR, sizeof(*MBR), 1, fs);
 	fclose(fs);	
 
-	fs = fopen("FileSystem.bin", "rb");
+	fs = fopen("FileSystem.bin", "r+b");
 	mbr_t* y = (mbr_t *)malloc(sizeof(MBR));
 	fread(y, sizeof(*MBR), 1, fs);
 	fclose(fs);
@@ -70,7 +70,7 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	printf("sizeof mbr struct: %lu\n", sizeof(mbr_t));	
 	printf("sizeof mbr struct: %lu\n", sizeof(*MBR));	
 
-	fs = fopen("FileSystem.bin", "w+b");
+	fs = fopen("FileSystem.bin", "r+b");
 	fseek(fs, sizeof(uint8_t) * cluster_size, SEEK_SET);
 	uint8_t x[] = {5,4};
 	fwrite(x, sizeof(x), sizeof(x)/sizeof(x[0]), fs);
