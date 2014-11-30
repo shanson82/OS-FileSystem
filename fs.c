@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <time.h>
 
 // structure to store Master Boot Record information
-typedef struct mbr {
+typedef struct __attribute__ ((__packed__)) {
 	uint16_t sector_size; // bytes ( >= 64 bytes)
 	uint16_t cluster_size; // number of sectors (at least 1 sector/cluster) 
 	uint16_t disk_size; // size of disk in clusters
@@ -13,6 +14,31 @@ typedef struct mbr {
 	uint16_t data_length; // clusters
 	char* disk_name;
 } mbr_t;
+
+typedef struct __attribute__ ((__packed__)) {
+	uint8_t entry_type;
+	uint16_t creation_date;
+	uint16_t creation_time;
+	uint8_t name_len;
+	char name[16];
+	uint32_t size;
+} entry_t;
+
+typedef struct __attribute__ ((__packed__)) {
+	uint8_t type;
+	uint8_t reserved;
+	uint16_t start;
+} entry_ptr_t;
+
+// format the date for creation_date and creation_time fields of entry_t struct
+uint32_t date_format() {
+	time_t t = time(NULL);
+	struct tm *tptr = localtime(&t);
+	uint32_t time_stamp;
+	time_stamp = ((tptr->tm_year-80)<<25) + ((tptr->tm_mon+1)<<21) + ((tptr->tm_mday)<<16) + (tptr->tm_hour<<11) + (tptr->tm_min<<5) + ((tptr->tm_sec)%60)/2;
+	return time_stamp;
+}
+
 
 
 // format the file system:
