@@ -75,32 +75,34 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	uint8_t init_fs[disk_size_bytes]; 
 	for (i=0; i < disk_size_bytes; i++) {
 		init_fs[i] = 0;
-		printf("%d %d\n", i, init_fs[i]);
 	}
 	fwrite(init_fs, sizeof(uint8_t), disk_size_bytes, fs);	
 	fclose(fs);
 
-	//FILE *fs;
 	fs = fopen("FileSystem.bin", "r+b");
+
 	// write the MBR
 	fwrite(MBR, sizeof(*MBR), 1, fs);
+	
+	// initialize the FAT area by giving each entry the value 0xFFFF
+	// create array of size data_length and fill each entry with 0xFFFF
+	uint16_t init_FAT[MBR->data_length];
+	for (i=0; i<MBR->data_length; i++) {
+		init_FAT[i] = 0xFFFF;
+	}
+	// find the start of cluster 1
+	fseek(fs, sector_size*cluster_size, SEEK_SET);
+	fwrite(init_FAT, sizeof(uint16_t), MBR->data_length, fs);
+
 	fclose(fs);	
-
+	
+	uint8_t test[disk_size_bytes];
 	fs = fopen("FileSystem.bin", "r+b");
-	mbr_t* y = (mbr_t *)malloc(sizeof(MBR));
-	fread(y, sizeof(*MBR), 1, fs);
+	fread(test, sizeof(uint8_t), disk_size_bytes, fs);
 	fclose(fs);
-	printf("fat start %d\nfat length %d\ndata start %d\ndata length %d\n",y->fat_start, y->fat_length, y->data_start,y->data_length);
-
-
-	printf("sizeof mbr struct: %lu\n", sizeof(mbr_t));	
-	printf("sizeof mbr struct: %lu\n", sizeof(*MBR));	
-
-	fs = fopen("FileSystem.bin", "r+b");
-	fseek(fs, sizeof(uint8_t) * cluster_size, SEEK_SET);
-	uint8_t x[] = {5,4};
-	fwrite(x, sizeof(x), sizeof(x)/sizeof(x[0]), fs);
-	fclose(fs);
+	for(i=0; i<disk_size_bytes; i++) {
+		printf("%d %d\n", i, test[i]);
+	}
 }
 
 int main(int argc, char *argv[]) {
