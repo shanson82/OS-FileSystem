@@ -94,6 +94,25 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	fseek(fs, sector_size*cluster_size, SEEK_SET);
 	fwrite(init_FAT, sizeof(uint16_t), MBR->data_length, fs);
 
+
+	// create the root directory
+	// root directory information is held starting in cluster 2
+	fseek(fs, sector_size*cluster_size*2, SEEK_SET);
+	entry_t *root = (entry_t *)malloc(sizeof(entry_t));
+	uint32_t time_stamp = date_format();
+	root->entry_type = 1;
+	root->creation_date = (time_stamp>>16) & 0xFFFF;
+	root->creation_time = time_stamp & 0xFFFF;
+	char name[5] = "root";
+	for (i=0; i<5; i++) {
+		root->name[i] = name[i];
+	}	
+	  
+	root->name_len = 4;
+	root->size = 0; // a directory is always size 0	
+	fwrite(root, sizeof(entry_t), 1, fs);	
+
+	// finished initilizing the file system, close the file
 	fclose(fs);	
 	
 	uint8_t test[disk_size_bytes];
@@ -107,7 +126,7 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 
 int main(int argc, char *argv[]) {
 	
-	format(64, 1, 20);
+	format(64, 1, 10);
 
 
 	return 0;
