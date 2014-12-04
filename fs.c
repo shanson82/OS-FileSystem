@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
+#include <arpa/inet.h>
 
 // structure to store Master Boot Record information
 typedef struct __attribute__ ((__packed__)) {
@@ -74,7 +75,7 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	fs = fopen("FileSystem.bin", "wb");
 	uint8_t init_fs[disk_size_bytes]; 
 	for (i=0; i < disk_size_bytes; i++) {
-		init_fs[i] = 0;
+		init_fs[i] = 0xFF;
 	}
 	fwrite(init_fs, sizeof(uint8_t), disk_size_bytes, fs);	
 	fclose(fs);
@@ -84,32 +85,27 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	// write the MBR
 	fwrite(MBR, sizeof(*MBR), 1, fs);
 	
-	// initialize the FAT area by giving each entry the value 0xFFFF
-	// create array of size data_length and fill each entry with 0xFFFF
-	uint16_t init_FAT[MBR->data_length];
-	for (i=0; i<MBR->data_length; i++) {
-		init_FAT[i] = 0xFFFF;
-	}
-	// find the start of cluster 1
-	fseek(fs, sector_size*cluster_size, SEEK_SET);
-	fwrite(init_FAT, sizeof(uint16_t), MBR->data_length, fs);
-
 
 	// create the root directory
 	// root directory information is held starting in cluster 2
+	// update the FAT entry from 0xFFFF to 0xFFFe
+	fseek(fs, sector_size*cluster_size, SEEK_SET);
+	uint16_t allocate = htons(0xFFFE);
+	fwrite(&allocate, sizeof(uint16_t), 1, fs);
+
 	fseek(fs, sector_size*cluster_size*2, SEEK_SET);
 	entry_t *root = (entry_t *)malloc(sizeof(entry_t));
 	uint32_t time_stamp = date_format();
 	root->entry_type = 1;
-	root->creation_date = (time_stamp>>16) & 0xFFFF;
-	root->creation_time = time_stamp & 0xFFFF;
+	root->creation_date = htons((time_stamp>>16) & 0xFFFF);
+	root->creation_time = htons(time_stamp & 0xFFFF);
 	char name[5] = "root";
 	for (i=0; i<5; i++) {
 		root->name[i] = name[i];
 	}	
 	  
 	root->name_len = 4;
-	root->size = 0; // a directory is always size 0	
+	root->size = 1; // a directory is always size 0	
 	fwrite(root, sizeof(entry_t), 1, fs);	
 
 	// finished initilizing the file system, close the file
