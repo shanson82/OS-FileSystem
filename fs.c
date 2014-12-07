@@ -35,6 +35,7 @@ typedef struct __attribute__ ((__packed__)) {
 mbr_t *MBR_memory; 
 uint16_t *FAT_memory;
 uint8_t *DATA_memory; // try with 1-d array 
+char* DISK_NAME = "FileSystem.bin";
 
 // format the date for creation_date and creation_time fields of entry_t struct
 uint32_t date_format() {
@@ -148,12 +149,30 @@ void load_disk(char *disk_name) {
 	fclose(fs);
 }
 
+// return a child, if any of a directory
+entry_t *fs_ls(int dh, int child_num) {
+	
+}
+
+// make a new directory where the parent is located at the data cluster indicated by dh
+void fs_mkdir(int dh, char* child_name) {
+	load_disk(DISK_NAME);
+	free(MBR_memory);
+	free(FAT_memory);
+	free(DATA_memory);
+}
+
+
+// open a directory with the absolute path name
+int fs_opendir(char *absolute_path) {
+	return 1;
+}
+
 
 
 int main(int argc, char *argv[]) {
 	
 	format(64, 1, 10);
-	load_disk("FileSystem.bin");
-
+	fs_mkdir(0, "help");
 	return 0;
 }
