@@ -31,6 +31,11 @@ typedef struct __attribute__ ((__packed__)) {
 	uint16_t start;
 } entry_ptr_t;
 
+// global variables
+mbr_t *MBR_memory; 
+uint16_t *FAT_memory;
+uint8_t **DATA_memory; // try with 2-D array - don't have it down 
+
 // format the date for creation_date and creation_time fields of entry_t struct
 uint32_t date_format() {
 	time_t t = time(NULL);
@@ -120,10 +125,69 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	}
 }
 
+// load the disk into memory
+void load_disk(char *disk_name) {
+	MBR_memory = (mbr_t *)malloc(sizeof(mbr_t));
+	printf("loading disk: %s\n", disk_name);
+	FILE *fs;
+	fs = fopen(disk_name, "r+b");
+	fseek(fs, 0, SEEK_SET);
+	printf("loading\n");
+	fread(MBR_memory, sizeof(mbr_t), 1, fs);
+	printf("loading\n");	
+	printf("loading disk\n");
+	printf("%d\n", MBR_memory->sector_size);
+	printf("%d\n", MBR_memory->cluster_size);
+	printf("%d\n", MBR_memory->disk_size);
+	printf("%d\n", MBR_memory->fat_start);
+	printf("%d\n", MBR_memory->fat_length);
+	printf("%d\n", MBR_memory->data_start);
+	printf("%d\n", MBR_memory->data_length);
+	printf("%s\n", MBR_memory->disk_name);
+
+	uint16_t cluster_size_bytes = MBR_memory->sector_size * MBR_memory->cluster_size;
+	// allocate memory for the FAT in memory
+	FAT_memory = (uint16_t *)malloc(sizeof(uint16_t)*MBR_memory->data_length);
+	fseek(fs, cluster_size_bytes, SEEK_SET);
+	fread(FAT_memory, sizeof(uint16_t), MBR_memory->data_length, fs);
+	int i;
+	for (i=0; i<MBR_memory->data_length; i++) {
+		printf("%d %d\n", i, FAT_memory[i]);
+	}
+	
+	// allocate memory for the Data area
+	// create 2-D array
+	// allocate number of rows (number of clusters
+	DATA_memory = malloc(sizeof(uint8_t) * MBR_memory->data_length);
+	for (i = 0; i<MBR_memory->data_length; i++) {
+		DATA_memory[i] = malloc(sizeof(uint8_t) * cluster_size_bytes);
+	}
+
+	// read each cluster of the data area into a row in DATA_memory
+	for (i=0; i<MBR_memory->data_length; i++) {
+		fseek(fs, cluster_size_bytes*(i+MBR_memory->data_start), SEEK_SET);
+		fread(DATA_memory, sizeof(uint8_t), cluster_size_bytes, fs);
+	}
+
+
+	int j;
+	for (i = 0; i<MBR_memory->data_length; i++) {
+		printf("row %d: ", i);
+		for (j=0; j<cluster_size_bytes; j++) {
+			printf("%d ", DATA_memory[i][j]);
+		}
+		printf("\n");
+	}
+
+	fclose(fs);
+}
+
+
+
 int main(int argc, char *argv[]) {
 	
 	format(64, 1, 10);
-
+	load_disk("FileSystem.bin");
 
 	return 0;
 }
