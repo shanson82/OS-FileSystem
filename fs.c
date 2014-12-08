@@ -2,7 +2,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
-#include <arpa/inet.h>
+#include <string.h>
+#include <arpa/inet.h> // allows for use of htons()
 
 // structure to store Master Boot Record information
 typedef struct __attribute__ ((__packed__)) {
@@ -36,6 +37,43 @@ mbr_t *MBR_memory;
 uint16_t *FAT_memory;
 uint8_t *DATA_memory; // try with 1-d array 
 char* DISK_NAME = "FileSystem.bin";
+
+// structures and functions associated with linked lists
+// linked list is used to store a path (parameter of fs_opendir)
+// - note to self: maybe better suited in a different file
+typedef struct node {
+	char *dir;
+	uint8_t cluster;
+	struct node *next;
+} node_t;
+
+// insert at end of list
+// e.g /root/OS/hw yields root->OS->hw->null
+void insert(node_t **headRef, char* dir) {
+	node_t *newNode = (node_t *)malloc(sizeof(node_t));
+	newNode->dir = dir;
+	newNode->next = NULL;
+	if (*headRef == NULL) {
+		*headRef = newNode;
+	} else {
+		node_t *current = *headRef;
+		while (current->next != NULL) {
+			current = current->next;
+		}
+		current->next = newNode;
+	}
+}
+
+// free the memory used by a list
+void empty_list(node_t **headRef) {
+	node_t *current = *headRef;
+	while (current->next != NULL) {
+		node_t *temp = current;
+		current = current->next;
+		free(temp);
+	}
+	*headRef = NULL;
+}
 
 // format the date for creation_date and creation_time fields of entry_t struct
 uint32_t date_format() {
@@ -156,6 +194,7 @@ entry_t *fs_ls(int dh, int child_num) {
 
 // make a new directory where the parent is located at the data cluster indicated by dh
 void fs_mkdir(int dh, char* child_name) {
+	
 	load_disk(DISK_NAME);
 	free(MBR_memory);
 	free(FAT_memory);
