@@ -67,12 +67,29 @@ void insert(node_t **headRef, char* dir) {
 // free the memory used by a list
 void empty_list(node_t **headRef) {
 	node_t *current = *headRef;
-	while (current->next != NULL) {
-		node_t *temp = current;
-		current = current->next;
-		free(temp);
+	if (current->next == NULL) {
+		free(current);
+	} else {
+		while (current->next != NULL) {
+			node_t *temp = current;
+			current = current->next;
+			free(temp);
+		}
 	}
 	*headRef = NULL;
+}
+
+void print(node_t **headRef) {
+	printf("printing list\n");
+	node_t *current = *headRef;
+	if (current == NULL) {
+		printf("List is empty\n");
+	} else {
+		while (current->next != NULL) {
+			printf("%s\n", current->dir);
+			current = current->next;
+		}
+	}
 }
 
 // format the date for creation_date and creation_time fields of entry_t struct
@@ -188,9 +205,8 @@ void load_disk(char *disk_name) {
 }
 
 // return a child, if any of a directory
-entry_t *fs_ls(int dh, int child_num) {
-	
-}
+//entry_t *fs_ls(int dh, int child_num) {	
+//}
 
 // make a new directory where the parent is located at the data cluster indicated by dh
 void fs_mkdir(int dh, char* child_name) {
@@ -204,6 +220,26 @@ void fs_mkdir(int dh, char* child_name) {
 
 // open a directory with the absolute path name
 int fs_opendir(char *absolute_path) {
+	node_t *root = NULL;
+	char *token;
+	printf("absolute path: %s\n", absolute_path);
+	if (strlen(absolute_path) == 0) {
+		return -1;
+	}
+	token = strtok(absolute_path, "/");
+	// if root is not first directory given in path, then return -1
+	if (strcmp(token, "root") != 0) {
+		return -1;
+	}
+	insert(&root, token);
+	while (token != NULL) {
+		printf("%s\n", token);
+		token = strtok(NULL, "/");
+		insert(&root, token);
+	}
+	print(&root);
+	empty_list(&root);
+
 	return 1;
 }
 
@@ -212,6 +248,10 @@ int fs_opendir(char *absolute_path) {
 int main(int argc, char *argv[]) {
 	
 	format(64, 1, 10);
-	fs_mkdir(0, "help");
+	char path[] = "root/home";
+	fs_opendir(path);
+	char path2[] = "rot/home";
+	printf("opendir %d\n", fs_opendir(path2));
+//	fs_mkdir(0, "help");
 	return 0;
 }
