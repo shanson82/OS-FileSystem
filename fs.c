@@ -238,15 +238,48 @@ void load_disk(char *disk_name) {
 	fclose(fs);
 }
 
+// fill entry struct
+entry_t *fill_child_entry(int dh) {
+	entry_t *child = malloc(sizeof(entry_t));
+	int cluster_size_bytes = MBR_memory->sector_size * MBR_memory->cluster_size;
+	int lookup = (1 + MBR_memory->fat_length + dh) * cluster_size_bytes;
+	FILE *fs;
+	fs = fopen(DISK_NAME, "rb+");
+	fseek(fs, lookup, SEEK_SET);
+	fread(child, sizeof(entry_t), 1, fs);
+	fclose(fs);
+	return child; 	
+	
+}
+
 // return a child, if any of a directory
-entry_t *fs_ls(int dh, int child_num) {	
-	return NULL;
+entry_t *fs_ls(int dh, int child_num) {
+	int cluster_size_bytes = MBR_memory->sector_size * MBR_memory->cluster_size;
+	int lookup = dh * cluster_size_bytes + sizeof(entry_t) + child_num * sizeof(entry_ptr_t); 	
+	entry_ptr_t *ptr = malloc(sizeof(entry_ptr_t));
+	ptr->type = DATA_memory[lookup];
+	ptr->reserved = DATA_memory[lookup + 1];
+	ptr->start = (DATA_memory[lookup + 2] << 8) + DATA_memory[lookup + 3];
+	
+	if (ptr->type != 0 || ptr->type != 1 || ptr->type != 2)
+		return NULL;
+	entry_t *child = fill_child_entry((int)ptr->start);
+	return child;
+
 }
 
 // make a new directory where the parent is located at the data cluster indicated by dh
 void fs_mkdir(int dh, char* child_name) {
-	
 	load_disk(DISK_NAME);
+
+	// search FAT for the first open cluster
+	int i;
+	for (i=0; i<MBR_memory->data_length) {
+		printf("%d\n", FAT_memory[i])
+		if (FAT_memory[i] = 0xFFFF) break;
+
+
+
 	free(MBR_memory);
 	free(FAT_memory);
 	free(DATA_memory);
@@ -345,6 +378,8 @@ int main(int argc, char *argv[]) {
 	printf("opendir %d\n", fs_opendir(path));
 	char path2[] = "rot/home";
 	printf("opendir %d\n", fs_opendir(path2));
+
+	printf("%d %d %d\n", (int)sizeof(entry_t), (int)sizeof(entry_ptr_t), (int)sizeof(entry_t) + (int)sizeof(entry_ptr_t));
 //	fs_mkdir(0, "help");
 	return 0;
 }
