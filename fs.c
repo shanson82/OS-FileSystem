@@ -255,9 +255,12 @@ void fs_mkdir(int dh, char* child_name) {
 
 // open a directory with the absolute path name
 int fs_opendir(char *absolute_path) {
-	node_t *root = NULL;
-	char *token;
+	load_disk(DISK_NAME);
+	// while parsing the path given by absolute_path, add each directory name to a linked list
+	node_t *root = NULL; // head pointer/root of linked list of directories in the path
+	char *token; // each token is a directory
 	printf("absolute path: %s\n", absolute_path);
+	// check that path isn't empty
 	if (strlen(absolute_path) == 0) {
 		return -1;
 	}
@@ -266,6 +269,7 @@ int fs_opendir(char *absolute_path) {
 	if (strcmp(token, "root") != 0) {
 		return -1;
 	}
+	// start building the list, that will be checked farther down
 	insert(&root, token);
 	while (token != NULL) {
 		printf("%s\n", token);
@@ -273,10 +277,62 @@ int fs_opendir(char *absolute_path) {
 		insert(&root, token);
 	}
 	print(&root);
-	printf("length %d\n", get_length(&root));
-	printf("next dir %s\n", get_next_dir(&root, "root"));
-	empty_list(&root);
 
+	// start checking the linked list of directories
+	if (get_length(&root) == 0) return -1; // this condition shouldn't ever pass, but inserted just in case
+	if (get_length(&root) == 1) return 0; // if length of list of directories is 1, then only directory is "root"
+	else {
+		int dh_next;
+		int dh_current = 0; // the cluster that the current directory is held
+		char *dir_current = "root"; // current directory
+		char *dir_next = get_next_dir(&root, dir_current); // next directory in the path
+		printf("next dir = %s\n", dir_next);	
+		int i;
+		int path_length = get_length(&root);
+		for (i=0; i<path_length-1; i++) {
+			int child_num = 0; 
+			printf("current and next dir = %s, %s\n", dir_current, dir_next);
+			
+			while (child_num < 10) {
+				entry_t *child = fs_ls(dh_current, child_num);
+				// no child present, or no child matches the directory being searched for, return -1
+				if (child == NULL) {
+					empty_list(&root);
+					free(MBR_memory);
+					free(FAT_memory);
+					free(DATA_memory);
+					return -1;
+				}
+				int cluster_size_bytes = MBR_memory->sector_size * MBR_memory->cluster_size;
+				// child found with matching name
+				if (strcmp(child->name, dir_next) == 0) {
+					int dh_p1, dh_p2;
+					// pull the pointer location of the child from the data that is in memory
+					dh_p1 = DATA_memory[dh_current * cluster_size_bytes + sizeof(entry_t) + child_num * sizeof(entry_ptr_t) + 2];
+					dh_p2 = DATA_memory[dh_current * cluster_size_bytes + sizeof(entry_t) + child_num * sizeof(entry_ptr_t) + 3];
+					dh_next = (dh_p1 << 8) + dh_p2;
+					dh_current = dh_next; // update
+					break;
+				}
+				child_num++;
+			}
+
+			dir_current = dir_next; // update current directory
+			dir_next = get_next_dir(&root, dir_current); // find the next directory in path 
+		
+		}
+		empty_list(&root);
+		free(MBR_memory);
+		free(FAT_memory);
+		free(DATA_memory);
+		
+		return dh_current;
+	}
+
+	empty_list(&root);	
+	free(MBR_memory);
+	free(FAT_memory);
+	free(DATA_memory);
 	return 1;
 }
 
@@ -285,8 +341,8 @@ int fs_opendir(char *absolute_path) {
 int main(int argc, char *argv[]) {
 	
 	format(64, 1, 10);
-	char path[] = "root/home";
-	fs_opendir(path);
+	char path[] = "root/home/OS/hw4";
+	printf("opendir %d\n", fs_opendir(path));
 	char path2[] = "rot/home";
 	printf("opendir %d\n", fs_opendir(path2));
 //	fs_mkdir(0, "help");
