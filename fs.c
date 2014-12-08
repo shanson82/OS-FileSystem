@@ -52,6 +52,10 @@ typedef struct node {
 void insert(node_t **headRef, char* dir) {
 	node_t *newNode = (node_t *)malloc(sizeof(node_t));
 	newNode->dir = dir;
+	//if (strcmp(dir, "root") == 0) {
+	//	printf("passed strcmp test\n");
+	//	newNode->cluster = 0;
+	//}
 	newNode->next = NULL;
 	if (*headRef == NULL) {
 		*headRef = newNode;
@@ -62,6 +66,34 @@ void insert(node_t **headRef, char* dir) {
 		}
 		current->next = newNode;
 	}
+}
+
+void update_cluster(node_t **headRef, char* dir, uint8_t cluster) {
+	
+}
+
+// given a directory, find the next directory in the list
+char *get_next_dir(node_t **headRef, char* current_dir) {
+	if (*headRef == NULL) return NULL;
+	node_t *current = *headRef;
+	while (current->next != NULL) {
+		if (strcmp(current->dir, current_dir) == 0) {
+			return current->next->dir;
+		}
+		current = current->next;
+	}
+	return NULL;
+}
+
+int get_length(node_t **headRef) {
+	if (*headRef == NULL) return 0;
+	node_t *current = *headRef;
+	int count = 0;
+	while (current->next != NULL) {
+		count++;
+		current = current->next;
+	}
+	return count;
 }
 
 // free the memory used by a list
@@ -86,7 +118,7 @@ void print(node_t **headRef) {
 		printf("List is empty\n");
 	} else {
 		while (current->next != NULL) {
-			printf("%s\n", current->dir);
+			printf("%s %d\n", current->dir, current->cluster);
 			current = current->next;
 		}
 	}
@@ -171,7 +203,8 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 
 	// finished initilizing the file system, close the file
 	fclose(fs);	
-	
+
+	/*	
 	uint8_t test[disk_size_bytes];
 	fs = fopen("FileSystem.bin", "r+b");
 	fread(test, sizeof(uint8_t), disk_size_bytes, fs);
@@ -179,6 +212,7 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	for(i=0; i<disk_size_bytes; i++) {
 		printf("%d %d\n", i, test[i]);
 	}
+	*/
 }
 
 // load the disk into memory
@@ -205,8 +239,9 @@ void load_disk(char *disk_name) {
 }
 
 // return a child, if any of a directory
-//entry_t *fs_ls(int dh, int child_num) {	
-//}
+entry_t *fs_ls(int dh, int child_num) {	
+	return NULL;
+}
 
 // make a new directory where the parent is located at the data cluster indicated by dh
 void fs_mkdir(int dh, char* child_name) {
@@ -238,6 +273,8 @@ int fs_opendir(char *absolute_path) {
 		insert(&root, token);
 	}
 	print(&root);
+	printf("length %d\n", get_length(&root));
+	printf("next dir %s\n", get_next_dir(&root, "root"));
 	empty_list(&root);
 
 	return 1;
