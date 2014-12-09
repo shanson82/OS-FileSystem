@@ -43,7 +43,6 @@ char* DISK_NAME = "FileSystem.bin";
 // - note to self: maybe better suited in a different file
 typedef struct node {
 	char *dir;
-	uint8_t cluster;
 	struct node *next;
 } node_t;
 
@@ -66,10 +65,6 @@ void insert(node_t **headRef, char* dir) {
 		}
 		current->next = newNode;
 	}
-}
-
-void update_cluster(node_t **headRef, char* dir, uint8_t cluster) {
-	
 }
 
 // given a directory, find the next directory in the list
@@ -118,7 +113,7 @@ void print(node_t **headRef) {
 		printf("List is empty\n");
 	} else {
 		while (current->next != NULL) {
-			printf("%s %d\n", current->dir, current->cluster);
+			printf("%s\n", current->dir);
 			current = current->next;
 		}
 	}
@@ -205,15 +200,6 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	// finished initilizing the file system, close the file
 	fclose(fs);	
 
-	/*	
-	uint8_t test[disk_size_bytes];
-	fs = fopen("FileSystem.bin", "r+b");
-	fread(test, sizeof(uint8_t), disk_size_bytes, fs);
-	fclose(fs);
-	for(i=0; i<disk_size_bytes; i++) {
-		printf("%d %d\n", i, test[i]);
-	}
-	*/
 }
 
 // load the disk into memory
@@ -256,13 +242,17 @@ entry_t *fill_child_entry(int dh) {
 // return a child, if any of a directory
 entry_t *fs_ls(int dh, int child_num) {
 	int cluster_size_bytes = MBR_memory->sector_size * MBR_memory->cluster_size;
-	int lookup = dh * cluster_size_bytes + sizeof(entry_t) + child_num * sizeof(entry_ptr_t); 	
+	// int lookup = dh * cluster_size_bytes + sizeof(entry_t) + child_num * sizeof(entry_ptr_t); 
+	int lookup = htons(dh) * cluster_size_bytes + sizeof(entry_t) + child_num * sizeof(entry_ptr_t); 
+	printf("dh, cluster size, entry_t, child_num, entry_ptr_t: %d %d %d %d %d\n", htons(dh), cluster_size_bytes, (int)sizeof(entry_t), child_num, (int)sizeof(entry_ptr_t));
+	printf("cluster size, start for look up: %d %d\n", cluster_size_bytes, lookup);	
 	entry_ptr_t *ptr = malloc(sizeof(entry_ptr_t));
 	ptr->type = DATA_memory[lookup];
 	ptr->reserved = DATA_memory[lookup + 1];
-	ptr->start = (DATA_memory[lookup + 2] << 8) + DATA_memory[lookup + 3];
-	
-	if (ptr->type != 0 || ptr->type != 1 || ptr->type != 2)
+	//ptr->start = (DATA_memory[lookup + 2] << 8) + DATA_memory[lookup + 3];
+	ptr->start = (DATA_memory[lookup + 3] << 8) + DATA_memory[lookup + 2];
+	printf("type, reserved, start %d %d %d\n", ptr->type, ptr->reserved, ptr->start);	
+	if (ptr->type != 0 && ptr->type != 1 && ptr->type != 2)
 		return NULL;
 	entry_t *child = fill_child_entry((int)ptr->start);
 	return child;
@@ -290,6 +280,7 @@ void fs_mkdir(int dh, char* child_name) {
 	child->creation_date = htons((time_stamp>>16) & 0xFFFF);
 	child->creation_time = htons(time_stamp & 0xFFFF);
 	child->name_len = strlen(child_name);
+	memset(child->name, 0, 16);
 	strcpy(child->name, child_name);
 	child->size = 0; // size 0 for directories
 
@@ -348,6 +339,7 @@ void fs_mkdir(int dh, char* child_name) {
 int fs_opendir(char *absolute_path) {
 	load_disk(DISK_NAME);
 
+	// DIAGNOSTIC: print FAT area out
 	int m; 
 	for (m=0; m<MBR_memory->data_length; m++) {
 		printf("%d %d\n", m, FAT_memory[m]);
@@ -382,7 +374,6 @@ int fs_opendir(char *absolute_path) {
 		int dh_current = 0; // the cluster that the current directory is held
 		char *dir_current = "root"; // current directory
 		char *dir_next = get_next_dir(&root, dir_current); // next directory in the path
-		printf("next dir = %s\n", dir_next);	
 		int i;
 		int path_length = get_length(&root);
 		for (i=0; i<path_length-1; i++) {
@@ -390,9 +381,11 @@ int fs_opendir(char *absolute_path) {
 			printf("current and next dir = %s, %s\n", dir_current, dir_next);
 			
 			while (child_num < 10) {
+				printf("child_num = %d\n", child_num);
 				entry_t *child = fs_ls(dh_current, child_num);
 				// no child present, or no child matches the directory being searched for, return -1
 				if (child == NULL) {
+					printf("child returned was NULL\n");
 					empty_list(&root);
 					free(MBR_memory);
 					free(FAT_memory);
@@ -403,11 +396,13 @@ int fs_opendir(char *absolute_path) {
 				// child found with matching name
 				if (strcmp(child->name, dir_next) == 0) {
 					int dh_p1, dh_p2;
+					printf("dh_current, csb, child_num %d %d %d\n", dh_current, cluster_size_bytes, child_num);
 					// pull the pointer location of the child from the data that is in memory
-					dh_p1 = DATA_memory[dh_current * cluster_size_bytes + sizeof(entry_t) + child_num * sizeof(entry_ptr_t) + 2];
-					dh_p2 = DATA_memory[dh_current * cluster_size_bytes + sizeof(entry_t) + child_num * sizeof(entry_ptr_t) + 3];
+					dh_p1 = DATA_memory[htons(dh_current) * cluster_size_bytes + sizeof(entry_t) + child_num * sizeof(entry_ptr_t) + 2];
+					dh_p2 = DATA_memory[htons(dh_current) * cluster_size_bytes + sizeof(entry_t) + child_num * sizeof(entry_ptr_t) + 3];
 					dh_next = (dh_p1 << 8) + dh_p2;
 					dh_current = dh_next; // update
+					printf("child name, dh %s %d\n", child->name, htons(dh_current));
 					break;
 				}
 				child_num++;
@@ -421,8 +416,8 @@ int fs_opendir(char *absolute_path) {
 		free(MBR_memory);
 		free(FAT_memory);
 		free(DATA_memory);
-		
-		return dh_current;
+		printf("dh_current %d %d\n", dh_current, htons(dh_current));	
+		return htons(dh_current);
 	}
 
 	empty_list(&root);	
@@ -441,7 +436,13 @@ void print_disk() {
 	fclose(fs);
 	int i;
 	for(i=0; i<disk_size_bytes; i++) {
-		printf("%d %d\n", i, test[i]);
+		if (i%32 == 0) {
+			printf("%d %d ", i, test[i]);
+		} else if (i %32 == 31) {
+			printf("%d\n", test[i]);
+		} else {
+			printf("%d ", test[i]);
+		}
 	}
 }	
 
@@ -451,7 +452,30 @@ int main(int argc, char *argv[]) {
 	char path[] = "root/";
 	int dh = fs_opendir(path);
 	printf("opendir %d\n", dh);
-	fs_mkdir(0, "help");
+	fs_mkdir(dh, "help");
+	char path2[] = "root/help";
+
+	printf("*********** opendir root/help*****************\n");
+	dh = fs_opendir(path2);
+	printf("opendir root/help %d\n", dh);
+	fs_mkdir(dh, "os");
+	printf("*********** opendir root/help/os *****************\n");
+	char path3[] = "root/help/os";
+	printf("opendir root/help/os %d\n", fs_opendir(path3)); 
+	
+	
+	printf("*********** opendir root/ *****************\n");
+	char path4[] = "root/";
+	dh = fs_opendir(path4);
+	printf("opendir root/ %d\n", dh);
+	fs_mkdir(dh, "aardvark"); 
+	
+	printf("*********** opendir root/help/ *****************\n");
+	char path5[] = "root/help";
+	dh = fs_opendir(path5);
+	printf("opendir root/help %d\n", dh);
+	fs_mkdir(dh, "fsa"); 
+
 	print_disk();
 	return 0;
 }
