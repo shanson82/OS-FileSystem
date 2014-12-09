@@ -177,13 +177,14 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 
 	// write the MBR
 	fwrite(MBR, sizeof(*MBR), 1, fs);
+
 	
 
 	// create the root directory
 	// root directory information is held starting in cluster 2
 	// update the FAT entry from 0xFFFF to 0xFFFe
 	fseek(fs, sector_size*cluster_size, SEEK_SET);
-	uint16_t allocate = htons(0xFFFE);
+	uint16_t allocate = 0xFFFE;
 	fwrite(&allocate, sizeof(uint16_t), 1, fs);
 
 	fseek(fs, sector_size*cluster_size*2, SEEK_SET);
@@ -273,12 +274,69 @@ void fs_mkdir(int dh, char* child_name) {
 	load_disk(DISK_NAME);
 
 	// search FAT for the first open cluster
-	int i;
-	for (i=0; i<MBR_memory->data_length) {
-		printf("%d\n", FAT_memory[i])
-		if (FAT_memory[i] = 0xFFFF) break;
+	int child_cluster;
+	for (child_cluster=0; child_cluster<MBR_memory->data_length; child_cluster++) {
+		printf("%d\n", FAT_memory[child_cluster]);
+		if (FAT_memory[child_cluster] == 0xFFFF) {
+			FAT_memory[child_cluster] = 0xFFFE;
+			break;
+		}
+	}
+	
+	// create directory
+	entry_t *child = (entry_t *)malloc(sizeof(entry_t));
+	child->entry_type = 1; // directory
+	uint32_t time_stamp = date_format();
+	child->creation_date = htons((time_stamp>>16) & 0xFFFF);
+	child->creation_time = htons(time_stamp & 0xFFFF);
+	child->name_len = strlen(child_name);
+	strcpy(child->name, child_name);
+	child->size = 0; // size 0 for directories
 
+	// create pointer to directory
+	
+	printf("next open spot: %d\n", child_cluster);
+	printf("FAT_memory[%d] = %d\n", child_cluster, FAT_memory[child_cluster]);
+	printf("child name %s\n", child->name);
+	
+	// write the new directory, the pointer to the new directory, and the updated FAT to the disk
+	FILE *fs;
+	fs = fopen(DISK_NAME, "rb+");
+	int cluster_size_bytes = MBR_memory->sector_size * MBR_memory->cluster_size;
 
+	// new directory
+	int child_location = (1 + MBR_memory->fat_length + child_cluster) * cluster_size_bytes;
+	fseek(fs, child_location, SEEK_SET);
+	fwrite(child, sizeof(entry_t), 1, fs);
+
+	// pointer to the new directory
+	entry_ptr_t *ptr_to_child = (entry_ptr_t *)malloc(sizeof(entry_ptr_t));
+	ptr_to_child->type = 1;
+	ptr_to_child->reserved = 0;
+	ptr_to_child->start = child_cluster;
+	// iterate through pointers of parent directory to find next open slot
+	int offset = dh * cluster_size_bytes + (int)sizeof(entry_t);
+	while(1) {
+		if (DATA_memory[offset] == 0 || DATA_memory[offset] == 1) {
+			offset = offset + (int)sizeof(entry_ptr_t);
+		} else if (DATA_memory[offset] == 2) {
+			// find next pointer here and change offset accordingly
+		} else {
+			fseek(fs, (1 + MBR_memory->fat_length) * cluster_size_bytes + offset, SEEK_SET);
+			fwrite(ptr_to_child, sizeof(entry_ptr_t), 1, fs);
+			break;
+		}
+	}
+
+	// FAT area
+	fseek(fs, cluster_size_bytes, SEEK_SET);
+	int r = fwrite(FAT_memory, sizeof(uint16_t), MBR_memory->data_length, fs);
+	printf("write %d\n", r);
+	int n;
+	for (n=0; n<MBR_memory->data_length; n++)
+		printf("%d %d\n", n, FAT_memory[n]);
+
+	fclose(fs);	
 
 	free(MBR_memory);
 	free(FAT_memory);
@@ -289,6 +347,11 @@ void fs_mkdir(int dh, char* child_name) {
 // open a directory with the absolute path name
 int fs_opendir(char *absolute_path) {
 	load_disk(DISK_NAME);
+
+	int m; 
+	for (m=0; m<MBR_memory->data_length; m++) {
+		printf("%d %d\n", m, FAT_memory[m]);
+	}
 	// while parsing the path given by absolute_path, add each directory name to a linked list
 	node_t *root = NULL; // head pointer/root of linked list of directories in the path
 	char *token; // each token is a directory
@@ -366,20 +429,29 @@ int fs_opendir(char *absolute_path) {
 	free(MBR_memory);
 	free(FAT_memory);
 	free(DATA_memory);
-	return 1;
+	return -1;
 }
 
-
+void print_disk() {
+	int disk_size_bytes = 640;
+	FILE *fs;
+	uint8_t test[disk_size_bytes];
+	fs = fopen("FileSystem.bin", "r+b");
+	fread(test, sizeof(uint8_t), disk_size_bytes, fs);
+	fclose(fs);
+	int i;
+	for(i=0; i<disk_size_bytes; i++) {
+		printf("%d %d\n", i, test[i]);
+	}
+}	
 
 int main(int argc, char *argv[]) {
 	
 	format(64, 1, 10);
-	char path[] = "root/home/OS/hw4";
-	printf("opendir %d\n", fs_opendir(path));
-	char path2[] = "rot/home";
-	printf("opendir %d\n", fs_opendir(path2));
-
-	printf("%d %d %d\n", (int)sizeof(entry_t), (int)sizeof(entry_ptr_t), (int)sizeof(entry_t) + (int)sizeof(entry_ptr_t));
-//	fs_mkdir(0, "help");
+	char path[] = "root/";
+	int dh = fs_opendir(path);
+	printf("opendir %d\n", dh);
+	fs_mkdir(0, "help");
+	print_disk();
 	return 0;
 }
