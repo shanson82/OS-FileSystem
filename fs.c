@@ -258,8 +258,11 @@ entry_t *fs_ls(int dh, int child_num) {
 	printf("type, reserved, start %d %d %d\n", ptr->type, ptr->reserved, ptr->start);	
 	if (ptr->type != 0 && ptr->type != 1 && ptr->type != 2)
 		return NULL;
-	entry_t *child = fill_child_entry((int)ptr->start);
-	return child;
+	if (ptr->type == 1) {
+		entry_t *child = fill_child_entry((int)ptr->start);
+		return child;
+	} else if (ptr->type == 2) {
+		
 
 }
 
