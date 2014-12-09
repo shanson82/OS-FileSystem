@@ -5,6 +5,7 @@
 #include <string.h>
 #include <arpa/inet.h> // allows for use of htons()
 
+#define DISK_NAME "FileSystem.bin"
 // structure to store Master Boot Record information
 typedef struct __attribute__ ((__packed__)) {
 	uint16_t sector_size; // bytes ( >= 64 bytes)
@@ -14,9 +15,10 @@ typedef struct __attribute__ ((__packed__)) {
 	uint16_t fat_length; // number of clusters
 	uint16_t data_start; 
 	uint16_t data_length; // clusters
-	char* disk_name;
+	char disk_name[32];
 } mbr_t;
 
+// structure to store directory or file
 typedef struct __attribute__ ((__packed__)) {
 	uint8_t entry_type;
 	uint16_t creation_date;
@@ -26,21 +28,23 @@ typedef struct __attribute__ ((__packed__)) {
 	uint32_t size;
 } entry_t;
 
+// structure to store pointer to another directory or file
 typedef struct __attribute__ ((__packed__)) {
 	uint8_t type;
 	uint8_t reserved;
 	uint16_t start;
 } entry_ptr_t;
 
-// global variables
+// ****************************** global variables ***********************//
+// variables filled when load_disk function is called
 mbr_t *MBR_memory; 
 uint16_t *FAT_memory;
-uint8_t *DATA_memory; // try with 1-d array 
-char* DISK_NAME = "FileSystem.bin";
+uint8_t *DATA_memory;  
+// **********************************************************************//
 
+// ************************** linked list related functions *************//
 // structures and functions associated with linked lists
 // linked list is used to store a path (parameter of fs_opendir)
-// - note to self: maybe better suited in a different file
 typedef struct node {
 	char *dir;
 	struct node *next;
@@ -51,10 +55,6 @@ typedef struct node {
 void insert(node_t **headRef, char* dir) {
 	node_t *newNode = (node_t *)malloc(sizeof(node_t));
 	newNode->dir = dir;
-	//if (strcmp(dir, "root") == 0) {
-	//	printf("passed strcmp test\n");
-	//	newNode->cluster = 0;
-	//}
 	newNode->next = NULL;
 	if (*headRef == NULL) {
 		*headRef = newNode;
@@ -80,6 +80,7 @@ char *get_next_dir(node_t **headRef, char* current_dir) {
 	return NULL;
 }
 
+// find length of the linked list
 int get_length(node_t **headRef) {
 	if (*headRef == NULL) return 0;
 	node_t *current = *headRef;
@@ -118,8 +119,10 @@ void print(node_t **headRef) {
 		}
 	}
 }
+// **************** end linked list functions *****************//
 
 // format the date for creation_date and creation_time fields of entry_t struct
+// pack the date into an unsigned 32 bit integer that is later split into two 16 bit integers
 uint32_t date_format() {
 	time_t t = time(NULL);
 	struct tm *tptr = localtime(&t);
@@ -139,7 +142,8 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	MBR->cluster_size = cluster_size;
 	MBR->disk_size = disk_size;
 	MBR->fat_start = 1;
-	MBR->disk_name = "A\0";
+	memset(MBR->disk_name, 0, 32);
+	strcpy(MBR->disk_name, "A");
 
 	// determine the size (in clusters) of the FAT and Data areas
 	int i;
@@ -153,14 +157,18 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 			break;
 		}
 	}
-	printf("fat start %d\nfat length %d\ndata start %d\ndata length %d\n", MBR->fat_start, MBR->fat_length, MBR->data_start, MBR->data_length);
+	// DIAGNOSTIC printing
+	//printf("fat start %d\n", MBR->fat_start);
+	//printf("fat length %d\n", MBR->fat_length);
+	//printf("data start %d\n", MBR->data_start);
+	//printf("data length %d\n", MBR->data_length);
 
 	// initialization operations
 	// - initialize the file system by writing zeros to every byte
 	// size of resulting file should be equal to sector_size * cluster_size * disk_size
 	int disk_size_bytes = sector_size * cluster_size * disk_size;
 	FILE *fs;
-	fs = fopen("FileSystem.bin", "wb");
+	fs = fopen(DISK_NAME, "wb");
 	uint8_t init_fs[disk_size_bytes]; 
 	for (i=0; i < disk_size_bytes; i++) {
 		init_fs[i] = 0xFF;
@@ -168,13 +176,11 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	fwrite(init_fs, sizeof(uint8_t), disk_size_bytes, fs);	
 	fclose(fs);
 
-	fs = fopen("FileSystem.bin", "r+b");
+	fs = fopen(DISK_NAME, "rb+");
 
 	// write the MBR
-	fwrite(MBR, sizeof(*MBR), 1, fs);
-
+	fwrite(MBR, sizeof(mbr_t), 1, fs);
 	
-
 	// create the root directory
 	// root directory information is held starting in cluster 2
 	// update the FAT entry from 0xFFFF to 0xFFFe
@@ -188,13 +194,11 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	root->entry_type = 1;
 	root->creation_date = htons((time_stamp>>16) & 0xFFFF);
 	root->creation_time = htons(time_stamp & 0xFFFF);
-	char name[5] = "root";
-	for (i=0; i<5; i++) {
-		root->name[i] = name[i];
-	}	
+	memset(root->name, 0, 16);
+	strcpy(root->name, "root");	
 	  
 	root->name_len = 4;
-	root->size = 1; // a directory is always size 0	
+	root->size = 0; // a directory is always size 0	
 	fwrite(root, sizeof(entry_t), 1, fs);	
 
 	// finished initilizing the file system, close the file
@@ -261,18 +265,31 @@ entry_t *fs_ls(int dh, int child_num) {
 
 // make a new directory where the parent is located at the data cluster indicated by dh
 void fs_mkdir(int dh, char* child_name) {
-	load_disk(DISK_NAME);
+	if (strlen(child_name) > 16) {
+		printf("Directory \"%s\" not made: name of directory must not exceed 16 bytes\n", child_name);
+		return;
+	}
 
+	load_disk(DISK_NAME);
+ 
 	// search FAT for the first open cluster
 	int child_cluster;
+	int occupied = 0;
 	for (child_cluster=0; child_cluster<MBR_memory->data_length; child_cluster++) {
 		printf("%d\n", FAT_memory[child_cluster]);
 		if (FAT_memory[child_cluster] == 0xFFFF) {
 			FAT_memory[child_cluster] = 0xFFFE;
 			break;
 		}
+		occupied++;
 	}
-	
+
+	// disk is full, cannot add directory
+	if (occupied == MBR_memory->data_length) {
+		printf("fs_mkdir: directory not made\nno free space left on disk for new directory\n");
+		return;
+	}
+
 	// create directory
 	entry_t *child = (entry_t *)malloc(sizeof(entry_t));
 	child->entry_type = 1; // directory
@@ -283,12 +300,6 @@ void fs_mkdir(int dh, char* child_name) {
 	memset(child->name, 0, 16);
 	strcpy(child->name, child_name);
 	child->size = 0; // size 0 for directories
-
-	// create pointer to directory
-	
-	printf("next open spot: %d\n", child_cluster);
-	printf("FAT_memory[%d] = %d\n", child_cluster, FAT_memory[child_cluster]);
-	printf("child name %s\n", child->name);
 	
 	// write the new directory, the pointer to the new directory, and the updated FAT to the disk
 	FILE *fs;
@@ -321,11 +332,7 @@ void fs_mkdir(int dh, char* child_name) {
 
 	// FAT area
 	fseek(fs, cluster_size_bytes, SEEK_SET);
-	int r = fwrite(FAT_memory, sizeof(uint16_t), MBR_memory->data_length, fs);
-	printf("write %d\n", r);
-	int n;
-	for (n=0; n<MBR_memory->data_length; n++)
-		printf("%d %d\n", n, FAT_memory[n]);
+	fwrite(FAT_memory, sizeof(uint16_t), MBR_memory->data_length, fs);
 
 	fclose(fs);	
 
@@ -339,11 +346,6 @@ void fs_mkdir(int dh, char* child_name) {
 int fs_opendir(char *absolute_path) {
 	load_disk(DISK_NAME);
 
-	// DIAGNOSTIC: print FAT area out
-	int m; 
-	for (m=0; m<MBR_memory->data_length; m++) {
-		printf("%d %d\n", m, FAT_memory[m]);
-	}
 	// while parsing the path given by absolute_path, add each directory name to a linked list
 	node_t *root = NULL; // head pointer/root of linked list of directories in the path
 	char *token; // each token is a directory
@@ -380,7 +382,8 @@ int fs_opendir(char *absolute_path) {
 			int child_num = 0; 
 			printf("current and next dir = %s, %s\n", dir_current, dir_next);
 			
-			while (child_num < 10) {
+			//while (child_num < 10) {
+			while(1) {
 				printf("child_num = %d\n", child_num);
 				entry_t *child = fs_ls(dh_current, child_num);
 				// no child present, or no child matches the directory being searched for, return -1
@@ -475,7 +478,7 @@ int main(int argc, char *argv[]) {
 	dh = fs_opendir(path5);
 	printf("opendir root/help %d\n", dh);
 	fs_mkdir(dh, "fsa"); 
-
+	fs_mkdir(dh, "abcdefghijklmnopqrstuv");
 	print_disk();
 	return 0;
 }
