@@ -132,7 +132,20 @@ uint32_t date_format() {
 	return time_stamp;
 }
 
-
+// create a entry_t struct to initialize a directory
+entry_t *create_directory_entry(char *dir_name) {
+	entry_t *dir = (entry_t *)malloc(sizeof(entry_t));
+	uint32_t time_stamp = date_format();
+	dir->entry_type = 1;
+	dir->creation_date = htons((time_stamp>>16) & 0xFFFF);
+	dir->creation_time = htons(time_stamp & 0xFFFF);
+	dir->name_len = strlen(dir_name);
+	memset(dir->name, 0, 16);
+	strcpy(dir->name, dir_name);		  
+	dir->size = 0; // a directory is always size 0	
+	dir->children_count = 0;
+	return dir;
+}
 
 // format the file system:
 // determine FAT area length and Data area length
@@ -190,17 +203,8 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	fwrite(&allocate, sizeof(uint16_t), 1, fs);
 
 	fseek(fs, sector_size*cluster_size*2, SEEK_SET);
-	entry_t *root = (entry_t *)malloc(sizeof(entry_t));
-	uint32_t time_stamp = date_format();
-	root->entry_type = 1;
-	root->creation_date = htons((time_stamp>>16) & 0xFFFF);
-	root->creation_time = htons(time_stamp & 0xFFFF);
-	memset(root->name, 0, 16);
-	strcpy(root->name, "root");	
-	  
-	root->name_len = 4;
-	root->size = 0; // a directory is always size 0	
-	root->children_count = 0;
+
+	entry_t *root = create_directory_entry("root");
 	fwrite(root, sizeof(entry_t), 1, fs);	
 
 	// finished initilizing the file system, close the file
@@ -231,7 +235,7 @@ void load_disk(char *disk_name) {
 	fclose(fs);
 }
 
-// fill entry struct
+// fill entry struct from disk
 entry_t *fill_entry (int dh) {
 	entry_t *e = malloc(sizeof(entry_t));
 	int cluster_size_bytes = MBR_memory->sector_size * MBR_memory->cluster_size;
@@ -301,16 +305,7 @@ void fs_mkdir(int dh, char* child_name) {
 	}
 
 	// create directory
-	entry_t *child = (entry_t *)malloc(sizeof(entry_t));
-	child->entry_type = 1; // directory
-	uint32_t time_stamp = date_format();
-	child->creation_date = htons((time_stamp>>16) & 0xFFFF);
-	child->creation_time = htons(time_stamp & 0xFFFF);
-	child->name_len = strlen(child_name);
-	memset(child->name, 0, 16);
-	strcpy(child->name, child_name);
-	child->size = 0; // size 0 for directories
-	child->children_count = 0;
+	entry_t *child = create_directory_entry(child_name);
 	
 	// update the counter of the parent directory, write the new directory, the pointer to the new directory, and the updated FAT to the disk
 	FILE *fs;
