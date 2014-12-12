@@ -334,25 +334,32 @@ void fs_mkdir(int dh, char* child_name) {
 	entry_ptr_t *ptr_to_child = create_ptr(1, child_cluster);
 
 	// iterate through pointers of parent directory to find next open slot
-	int offset = dh * cluster_size_bytes + (int)sizeof(entry_t);
 	int max_children_initial_cluster = (cluster_size_bytes - sizeof(entry_t)) / sizeof(entry_ptr_t);
 	int max_children_overflow_cluster = cluster_size_bytes / sizeof(entry_ptr_t);
 	printf("initial overflow %d %d\n", max_children_initial_cluster, max_children_overflow_cluster);
-	if (children_count == max_children_initial_cluster || (children_count % max_children_overflow_cluster) == max_children_initial_cluster) {
+
+	if (children_count < max_children_initial_cluster) {
+
+		int ptr_offset = (1+MBR_memory->fat_length+dh) * cluster_size_bytes + (int)sizeof(entry_t) + (children_count-1)*sizeof(entry_ptr_t);
+		fseek(fs, ptr_offset, SEEK_SET);
+		fwrite(ptr_to_child, sizeof(entry_ptr_t), 1, fs);
+
+	} else if (children_count == max_children_initial_cluster) {
 		// find free area in FAT
 		int ptr_overflow_cluster = find_free_cluster();
 		printf("ptr overflow cluster %d\n", ptr_overflow_cluster);
 		// create a link cluster to write in last available area
 		entry_ptr_t *link_ptr = create_ptr(2, ptr_overflow_cluster);
-		int link_ptr_offset = (1 + MBR_memory->fat_length + dh) * cluster_size_bytes + (children_count-1)*sizeof(entry_ptr_t);
+		int	link_ptr_offset = (1 + MBR_memory->fat_length + dh) * cluster_size_bytes + (children_count-1)*sizeof(entry_ptr_t);
+		
 		fseek(fs, link_ptr_offset, SEEK_SET);
 		fwrite(link_ptr, sizeof(entry_ptr_t), 1, fs);
 		
 		int ptr_offset = (1 + MBR_memory->fat_length + ptr_overflow_cluster) * cluster_size_bytes;
 		fseek(fs, ptr_offset, SEEK_SET);
 		fwrite(ptr_to_child, sizeof(entry_ptr_t), 1, fs);
-	// start here: need to add one more to children count
-	// move the writing of the parent to below here
+		parent->children_count++;
+
 	}
 	
 
