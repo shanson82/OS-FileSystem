@@ -264,8 +264,24 @@ entry_t *fs_ls(int dh, int child_num) {
 		entry_t *child = fill_entry((int)ptr->start);
 		return child;
 	} else if (ptr->type == 2) {
+		return NULL;
 	}		
+	return NULL;
+}
 
+int find_free_cluster() {
+	int child_cluster;
+	int occupied = 0;
+	for (child_cluster=0; child_cluster < MBR_memory->data_length; child_cluster++) {
+		printf("%d %d\n", child_cluster, FAT_memory[child_cluster]);
+		if (FAT_memory[child_cluster] == 0xFFFF) {
+			FAT_memory[child_cluster] = 0xFFFE;
+			return child_cluster;
+			break;
+		}
+		//occupied++;
+	}
+	return -1;	
 }
 
 // make a new directory where the parent is located at the data cluster indicated by dh
@@ -276,21 +292,10 @@ void fs_mkdir(int dh, char* child_name) {
 	}
 
 	load_disk(DISK_NAME);
- 
-	// search FAT for the first open cluster
-	int child_cluster;
-	int occupied = 0;
-	for (child_cluster=0; child_cluster<MBR_memory->data_length; child_cluster++) {
-		printf("%d\n", FAT_memory[child_cluster]);
-		if (FAT_memory[child_cluster] == 0xFFFF) {
-			FAT_memory[child_cluster] = 0xFFFE;
-			break;
-		}
-		occupied++;
-	}
-
-	// disk is full, cannot add directory
-	if (occupied == MBR_memory->data_length) {
+	
+	int child_cluster = find_free_cluster();
+	printf("child_cluster = %d\n", child_cluster);
+	if (child_cluster == -1) {
 		printf("fs_mkdir: directory not made\nno free space left on disk for new directory\n");
 		return;
 	}
@@ -333,7 +338,10 @@ void fs_mkdir(int dh, char* child_name) {
 	ptr_to_child->start = child_cluster;
 	// iterate through pointers of parent directory to find next open slot
 	int offset = dh * cluster_size_bytes + (int)sizeof(entry_t);
-	while(1) {
+	
+
+
+/*	while(1) {
 		if (DATA_memory[offset] == 0 || DATA_memory[offset] == 1) {
 			offset = offset + (int)sizeof(entry_ptr_t);
 		} else if (DATA_memory[offset] == 2) {
@@ -344,6 +352,7 @@ void fs_mkdir(int dh, char* child_name) {
 			break;
 		}
 	}
+*/
 
 	// FAT area
 	fseek(fs, cluster_size_bytes, SEEK_SET);
@@ -351,6 +360,9 @@ void fs_mkdir(int dh, char* child_name) {
 
 	fclose(fs);	
 
+	free(child);
+	free(parent);
+	free(ptr_to_child);
 	free(MBR_memory);
 	free(FAT_memory);
 	free(DATA_memory);
