@@ -1,6 +1,3 @@
-// turn in this copy if I can't get things quite right
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -29,6 +26,7 @@ typedef struct __attribute__ ((__packed__)) {
 	uint8_t name_len;
 	char name[16];
 	uint32_t size;
+	uint16_t children_count; // keep track of the number of children
 } entry_t;
 
 // structure to store pointer to another directory or file
@@ -202,6 +200,7 @@ void format(uint16_t sector_size, uint16_t cluster_size, uint16_t disk_size) {
 	  
 	root->name_len = 4;
 	root->size = 0; // a directory is always size 0	
+	root->children_count = 0;
 	fwrite(root, sizeof(entry_t), 1, fs);	
 
 	// finished initilizing the file system, close the file
@@ -233,16 +232,16 @@ void load_disk(char *disk_name) {
 }
 
 // fill entry struct
-entry_t *fill_child_entry(int dh) {
-	entry_t *child = malloc(sizeof(entry_t));
+entry_t *fill_entry (int dh) {
+	entry_t *e = malloc(sizeof(entry_t));
 	int cluster_size_bytes = MBR_memory->sector_size * MBR_memory->cluster_size;
 	int lookup = (1 + MBR_memory->fat_length + dh) * cluster_size_bytes;
 	FILE *fs;
 	fs = fopen(DISK_NAME, "rb+");
 	fseek(fs, lookup, SEEK_SET);
-	fread(child, sizeof(entry_t), 1, fs);
+	fread(e, sizeof(entry_t), 1, fs);
 	fclose(fs);
-	return child; 	
+	return e; 	
 	
 }
 
@@ -262,12 +261,11 @@ entry_t *fs_ls(int dh, int child_num) {
 	if (ptr->type != 0 && ptr->type != 1 && ptr->type != 2)
 		return NULL;
 	if (ptr->type == 1) {
-		entry_t *child = fill_child_entry((int)ptr->start);
+		entry_t *child = fill_entry((int)ptr->start);
 		return child;
 	} else if (ptr->type == 2) {
-		return NULL; // this is junk
 	}		
-	return NULL; // junk
+
 }
 
 // make a new directory where the parent is located at the data cluster indicated by dh
@@ -307,11 +305,21 @@ void fs_mkdir(int dh, char* child_name) {
 	memset(child->name, 0, 16);
 	strcpy(child->name, child_name);
 	child->size = 0; // size 0 for directories
+	child->children_count = 0;
 	
-	// write the new directory, the pointer to the new directory, and the updated FAT to the disk
+	// update the counter of the parent directory, write the new directory, the pointer to the new directory, and the updated FAT to the disk
 	FILE *fs;
 	fs = fopen(DISK_NAME, "rb+");
 	int cluster_size_bytes = MBR_memory->sector_size * MBR_memory->cluster_size;
+
+	// update children count of parent directory
+	int parent_location = (1 + MBR_memory->fat_length + dh) * cluster_size_bytes;
+	entry_t *parent = fill_entry(dh);
+	printf("children count: %d\n", parent->children_count);
+	uint16_t children_count = parent->children_count;
+	parent->children_count++;
+	fseek(fs, parent_location, SEEK_SET);
+	fwrite(parent, sizeof(entry_t), 1, fs);
 
 	// new directory
 	int child_location = (1 + MBR_memory->fat_length + child_cluster) * cluster_size_bytes;
